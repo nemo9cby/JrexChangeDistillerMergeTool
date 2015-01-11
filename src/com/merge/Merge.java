@@ -25,20 +25,37 @@ import org.w3c.dom.NodeList;
 
 public class Merge {
 	
-	public static final boolean FIRST = false;
+	public static final boolean FIRST = true;
+	
+	private static String inputFilePath;
 	
 	public static void main (String[] args) throws Exception
 	{
-		//recordEvorex(new File("/Users/cbb/Desktop/incubator2"));
-		//readFromJournal(new File("/Users/cbb/Desktop/journal"));
-		initializeEvorex(new File("/Users/cbb/Desktop/incubator2"));
+		if (args.length != 2)
+		{
+			System.out.println("<Usage>: <number> <command>");
+		}
+		else
+		{
+			inputFilePath = args[1];
+			if (args[0].equals("1"))
+				recordEvorex(new File(args[1]));
+			if (args[0].equals("2"))
+				readFromJournal(new File(args[1] + "/journal"));
+			if (args[0].equals("3"))
+				initializeEvorex(new File(args[1]));
+		}
+		//recordEvorex(new File("/Users/Nemo/Desktop/incubator2"));
+		//readFromJournal(new File("/Users/Nemo/Desktop/journal"));
+		//initializeEvorex(new File("/Users/Nemo/Desktop/incubator2"));
+		//initializeEvorex(new File("/Users/Nemo/Desktop/oneFileTest"));
 		
 	}
 	
 	public static void readFromJournal (File node) throws Exception {
 		//Scanner inFinish = new Scanner(node);
 		int finishLine = countLines(node.getAbsolutePath());
-		Scanner inTodo = new Scanner(new File("/Users/cbb/Desktop/todolist"));
+		Scanner inTodo = new Scanner(new File(inputFilePath + "/todolist"));
 		int n = 0;
 		while(inTodo.hasNextLine())
 		{
@@ -50,7 +67,14 @@ public class Merge {
 			File nNode = new File(inTodo.nextLine());
 			DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder dbBuilder = dbFactory.newDocumentBuilder();
-			Document doc = dbBuilder.parse(nNode);
+			Document doc;
+			try{
+				doc = dbBuilder.parse(nNode);
+			} catch (Exception e)
+			{
+				continue;
+			}
+			
 			Document outputDoc = dbBuilder.newDocument();
 			Element outputFileElem = outputDoc.createElement("File");
 			outputFileElem.setAttribute("name", nNode.getName());
@@ -62,19 +86,21 @@ public class Merge {
 			{
 				Element left = (Element) revisionList.item(i);
 				Element right = (Element) revisionList.item(i + 1);
-				RevisionComparator r = new RevisionComparator(left, right, node.getAbsolutePath(),node.getName().substring(0, node.getName().lastIndexOf(".")));
+				RevisionComparator r = new RevisionComparator(left, right, nNode.getAbsolutePath(),nNode.getName().substring(0, node.getName().lastIndexOf(".")));
 				outputDoc = r.compare(outputDoc, outputFileElem);
 			}
+			
+			// output
 			TransformerFactory transformerFactory = TransformerFactory.newInstance();
 			transformerFactory.setAttribute("indent-number", 2);
 			Transformer transformer = transformerFactory.newTransformer();
 			transformer.setOutputProperty(OutputKeys.INDENT, "yes");
 			DOMSource source = new DOMSource(outputDoc);
-			StreamResult result = new StreamResult(new File(currentDir + "/" + node.getName().substring(0, node.getName().lastIndexOf(".")) + ".output"));					
+			StreamResult result = new StreamResult(new File(currentDir + "/" + nNode.getName().substring(0, nNode.getName().lastIndexOf(".")) + ".output"));					
 			transformer.transform(source, result);
 			
 			// journal
-			try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter("/Users/cbb/Desktop/journal", true))))
+			try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(inputFilePath + "/journal", true))))
 			{
 				out.println(node.getAbsolutePath());
 			}
@@ -86,10 +112,19 @@ public class Merge {
 	public static void initializeEvorex(File node) throws Exception {
 		if (node.isFile() && node.getName().contains(".evorex")) 
 		{
-			System.out.println(node.getName());
+			System.out.println(node.getAbsolutePath());
 			DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder dbBuilder = dbFactory.newDocumentBuilder();
-			Document doc = dbBuilder.parse(node);
+			Document doc;
+			// if parse error, jump to next file
+			try{
+				 doc = dbBuilder.parse(node);
+			} catch (Exception e)
+			{
+				System.out.println("Evorex parse fail!!!");
+				return;
+			}
+			
 			Document outputDoc = dbBuilder.newDocument();
 			Element outputFileElem = outputDoc.createElement("File");
 			outputFileElem.setAttribute("name", node.getName());
@@ -131,7 +166,7 @@ public class Merge {
 			transformer.transform(source, result);
 			
 			// journal
-			try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter("/Users/cbb/Desktop/journal", true))))
+			try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(inputFilePath + "/journal", true))))
 			{
 				out.println(node.getAbsolutePath());
 			}
@@ -165,7 +200,7 @@ public class Merge {
 	public static void record (File file) throws Exception
 	{
 		String evorexFileAbsolutePath = file.getAbsolutePath(); 
-		try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter("/Users/cbb/Desktop/todolist", true))))
+		try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(inputFilePath + "/todolist", true))))
 		{
 			out.println(evorexFileAbsolutePath);
 		} catch (IOException e) {

@@ -114,6 +114,7 @@ public class RevisionComparator {
 						Element log = outputDoc.createElement("Log");
 						log.setAttribute("content", content);
 						log.setAttribute("method", elem.getAttribute("parent"));
+						log.setAttribute("operation", elem.getNodeName());
 						Evolution.appendChild(log);
 					}
 				}
@@ -176,7 +177,7 @@ public class RevisionComparator {
 					if ( startOftheMethod == -1)
 					{
 						System.out.println("ERROR!!! " + keyOfInsertMethod + "NOT found in sourcecode " + curFileName);
-						break;
+						continue;
 					}
 					String before = curSrc.substring(0,startOftheMethod);
 					int startLocation = before.lastIndexOf("\r\n") + 2;
@@ -223,6 +224,11 @@ public class RevisionComparator {
 					// calculate churn
 					String searchMethodKeyword = getRegex(DeleteMethodNode);
 					int startOftheMethod = keyLocation(searchMethodKeyword, preSrc);
+					if (startOftheMethod == -1)
+					{
+						System.out.println("ERROR!!! " + keyOfDeleteMethod + "NOT found in sourcecode " + preFileName);
+						continue;
+					}
 					int length = change.getChangedEntity().getEndPosition() - change.getChangedEntity().getStartPosition() + 1;
 					/*
 					if ( sourceCode.lastIndexOf(searchMethodKeyword) == -1)
@@ -473,12 +479,16 @@ public class RevisionComparator {
 		{
 			return (m.start());
 		}
-		else return -1;
+		else{
+			System.out.println(regex);
+			//System.out.println(input);
+			return -1;
+		}
 	}
 	
 	private String getRegex (Element methodNode)
 	{
-		String searchMethodKeyword = methodNode.getAttribute("name") + "(\\s*)" + "\\(" + "(\\s*)";
+		String searchMethodKeyword = methodNode.getAttribute("name") + "(\\s*+)" + "\\(" + "(\\s*+)";
 		NodeList paraList = methodNode.getElementsByTagName("parameter");
 		String paraStr = "";
 		// 组成 method 的关键字 （应当组成正则表达式）
@@ -487,31 +497,30 @@ public class RevisionComparator {
 			Element paraElem = (Element) paraList.item(i);
 			// type [] issue
 			String typeStr = paraElem.getAttribute("type");
-			String typeRegex = "(final)*(\\s*)";		// 这里应该还会有修改
-			if (typeStr.contains("[]"))
-			{
+			
+			String typeRegex = "(final)*?(\\s*?)";		// 这里应该还会有修改
+			
+			// 若含有特殊字符，则加反斜杠 \
 				for(int j = 0; j < typeStr.length(); j ++)
 				{
-					if (Character.isLetter(typeStr.charAt(j))) 
+					if (Character.isLetter(typeStr.charAt(j)) || Character.isDigit(typeStr.charAt(j))) 
 					{
 						typeRegex = typeRegex.concat(typeStr.charAt(j) + "");
 					}
 					else 
 					{
-						typeRegex = typeRegex.concat("(\\s*)");
+						typeRegex = typeRegex.concat("(\\s*?)");
 						typeRegex = typeRegex.concat("\\" + typeStr.charAt(j) );
 					}
 				}
-			}
-			else {
-				typeRegex = typeRegex.concat(typeStr);
-			}
+			
+		
 			//
-			paraStr = paraStr.concat(typeRegex + "(\\s*)" + paraElem.getAttribute("name"));
+			paraStr = paraStr.concat(typeRegex + "(\\s*?)" + paraElem.getAttribute("name"));
 			if(i != paraList.getLength() - 1)
-				paraStr = paraStr.concat("(\\,)(\\s*)");
+				paraStr = paraStr.concat("(\\,)(\\s*?)");
 		}
-		searchMethodKeyword = searchMethodKeyword.concat(paraStr) + "(\\s*)\\)";
+		searchMethodKeyword = searchMethodKeyword.concat(paraStr) + "(\\s*?)\\)";
 		
 		return searchMethodKeyword;
 	}
