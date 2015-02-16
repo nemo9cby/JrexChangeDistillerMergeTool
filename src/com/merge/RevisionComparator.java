@@ -40,6 +40,10 @@ public class RevisionComparator {
 	private HashMap<String, ArrayList<String>> preCommentMap = new HashMap<String, ArrayList<String>>();
 	private HashMap<String, ArrayList<String>> curCommentMap = new HashMap<String, ArrayList<String>>();
 	private HashMap<String, Element> updateMethodMap = new HashMap<String, Element>();
+	private HashMap<String, Integer> preImportMap = new HashMap<String, Integer>();
+	private HashMap<String, Integer> curImportMap = new HashMap<String, Integer>();
+
+	
 	
 	private Document preDoc;
 	private Document curDoc;
@@ -76,8 +80,8 @@ public class RevisionComparator {
 		loadMethod();
 		loadComment(preDoc, preCommentMap);
 		loadComment(curDoc, curCommentMap);
-		
-		
+		loadImport(preASTElem, preImportMap);
+		loadImport(curASTElem, curImportMap);
 	}
 	
 	public Document compare(Document doc, Element elem)
@@ -87,9 +91,18 @@ public class RevisionComparator {
 		elem.appendChild(Evolution);
 		Evolution.setAttribute("preVersion", preRevisionElem.getAttribute("versionNumber"));
 		Evolution.setAttribute("curVersion", curRevisionElem.getAttribute("versionNumber"));
+		Evolution.setAttribute("curTime", curRevisionElem.getAttribute("date"));
+		Evolution.setAttribute("author", curRevisionElem.getAttribute("author"));
+		Evolution.setAttribute("churn", curRevisionElem.getAttribute("churn"));
+		Evolution.setAttribute("logm", curRevisionElem.getAttribute("logm"));
+		Evolution.setAttribute("logmadd", curRevisionElem.getAttribute("logmadd"));
+		Evolution.setAttribute("logmdel", curRevisionElem.getAttribute("logmdel"));
+		Evolution.setAttribute("state", curRevisionElem.getAttribute("state"));
+		Evolution.setAttribute("text", curRevisionElem.getAttribute("text"));
+		Evolution.setAttribute("type", curRevisionElem.getAttribute("type"));
 		cdAddCompare();
 		cdCompare();
-		logReport();
+		//logReport();
 		return outputDoc;
 	}
 	
@@ -127,14 +140,13 @@ public class RevisionComparator {
 	{
 		String preFileName = preRevisionElem.getAttribute("versionNumber") + "|||||" + fileName;
 		String curFileName = curRevisionElem.getAttribute("versionNumber") + "|||||" + fileName;
-		String preVersion = preRevisionElem.getAttribute("versionNumber");
-		String curVersion = curRevisionElem.getAttribute("versionNumber");
 
 		File left = new File(currentDir + "/" + preFileName);
 		File right = new File(currentDir + "/" + curFileName);
 		FileDistiller distiller = ChangeDistiller.createFileDistiller(Language.JAVA);
 		ChangeDistiller.getProvidedLanguages();
-		try {
+		try 
+		{
 			distiller.extractClassifiedSourceCodeChanges(left, right);
 		} catch(Exception e) {
 			System.err.println(e.getMessage());
@@ -160,53 +172,38 @@ public class RevisionComparator {
 					}
 					Element InsertMethodNode = (Element) curMethodMap.get(keyOfInsertMethod);
 					Element insertNode = outputDoc.createElement("Insert");
-					insertNode.setAttribute("level", "method");
+					insertNode.setAttribute("type", "Method");
+					insertNode.setAttribute("parent", rootName[rootName.length - 1]);
 					Evolution.appendChild(insertNode);
 					Node importInsertMethodNode = outputDoc.importNode(InsertMethodNode, true);						
 					insertNode.appendChild(importInsertMethodNode);
 					
 					// 计算整个方法在源代码中有多少行
-									
+					//System.out.printf("Method keyword is %s", keyOfInsertMethod);
 					String searchMethodKeyword = getRegex(InsertMethodNode);
-					// System.out.println(curSrc);
 					int startOftheMethod = keyLocation(searchMethodKeyword, curSrc);
-					int length = change.getChangedEntity().getEndPosition() - change.getChangedEntity().getStartPosition() + 1;
-					//System.out.println(currentVersion[0] + " " + currentFileName);
-					//System.out.println(searchMethodKeyword);
 					
 					if ( startOftheMethod == -1)
 					{
 						System.out.println("ERROR!!! " + keyOfInsertMethod + "NOT found in sourcecode " + curFileName);
 						continue;
 					}
-					String before = curSrc.substring(0,startOftheMethod);
-					int startLocation = before.lastIndexOf("\r\n") + 2;
-					String methodString = null;
-					// 为了防止长度溢出
-					if (startLocation + length > curSrc.length() - 1)
-						methodString = curSrc.substring(startLocation);
-					else{
-						methodString = curSrc.substring(startLocation, startLocation + length);
+					/* calculate method line */
+					String after = curSrc.substring(startOftheMethod, curSrc.length() - 1);
+					int methodLineNumber = methodLine(after);
+					if (methodLineNumber == -1)
+					{
+						System.out.println("ERROR!!! " + keyOfInsertMethod + " LINE NUMBER IS WRONG!!!");
 					}
-					//System.out.println(methodString);
-					// 计算行数
-					String[] methodStringArray = methodString.split("\\r\\n");
-					//lineAdded += methodStringArray.length;			
 					Element codeChurnElem = outputDoc.createElement("CodeChurn");
-					codeChurnElem.setAttribute("added", methodStringArray.length + "");
+					//codeChurnElem.setAttribute("added", methodStringArray.length + "");
+					codeChurnElem.setAttribute("added", methodLineNumber + "");
 					insertNode.appendChild(codeChurnElem);
-					
-					lineAdded += methodStringArray.length;
-					int[] lineEdit = {0, 0, 0, 0};
-					lineEdit[0] += methodStringArray.length;
-					//codeChurnMap.put(searchMethodKeyword, lineEdit);
-					//System.out.println(searchMethodKeyword);		
-					//changeMethod[changeMethod.length - 1]
+					lineAdded += methodLineNumber;
 				}
 				if (changeOperation[0].equals("Delete"))
 				{
 					String keyOfDeleteMethod = rootName[rootName.length - 1] + "|||||" + changeMethod[changeMethod.length - 1];
-					//System.out.println(change);
 					if (preMethodMap.get(keyOfDeleteMethod) == null)
 					{
 						System.out.printf("Compare between %s and %s, the delete method: %s is not found in jrex. \n"
@@ -216,7 +213,8 @@ public class RevisionComparator {
 					// import the method node from jrex AST
 					Element DeleteMethodNode = (Element) preMethodMap.get(keyOfDeleteMethod);
 					Element deleteNode = outputDoc.createElement("Delete");
-					deleteNode.setAttribute("level", "method");
+					deleteNode.setAttribute("type", "Method");
+					deleteNode.setAttribute("parent", rootName[rootName.length - 1]);
 					Evolution.appendChild(deleteNode);
 					Node importDeleteMethodNode = outputDoc.importNode(DeleteMethodNode, true);	
 					deleteNode.appendChild(importDeleteMethodNode);
@@ -228,44 +226,30 @@ public class RevisionComparator {
 					{
 						System.out.println("ERROR!!! " + keyOfDeleteMethod + "NOT found in sourcecode " + preFileName);
 						continue;
-					}
-					int length = change.getChangedEntity().getEndPosition() - change.getChangedEntity().getStartPosition() + 1;
-					/*
-					if ( sourceCode.lastIndexOf(searchMethodKeyword) == -1)
+					}				
+					String after = preSrc.substring(startOftheMethod, preSrc.length() - 1);
+					int methodLineNumber = methodLine(after);
+					if (methodLineNumber == -1)
 					{
-						System.out.println("ERROR!!! " + keyOfDeleteMethod + "NOT found in sourcecode " + currentFileName);
-						break;
-					}*/
-					String before = preSrc.substring(0, startOftheMethod);
-					int startLocation = before.lastIndexOf("\r\n") + 2;
-					String methodString;
-					if (startLocation + length > preSrc.length() - 1)
-						methodString = preSrc.substring(startLocation);
-					else{
-						methodString = preSrc.substring(startLocation, startLocation + length);
+						System.out.println("ERROR!!! " + keyOfDeleteMethod + " LINE NUMBER IS WRONG!!!");
 					}
-					//System.out.println(methodString);
-					String[] methodStringArray = methodString.split("\\r\\n");
-					
-					//lineDeleted += methodStringArray.length;
+				
 					Element codeChurnElem = outputDoc.createElement("CodeChurn");
-					codeChurnElem.setAttribute("deleted", methodStringArray.length + "");
+					codeChurnElem.setAttribute("deleted", methodLineNumber + "");
 					deleteNode.appendChild(codeChurnElem);
-					
-					//int[] lineEdit = {0, 0, 0, 0};
-					//lineEdit[1] += methodStringArray.length;
-					//codeChurnMap.put(searchMethodKeyword, lineEdit);
-					
+					lineDeleted = lineDeleted + methodLineNumber;
 				}	
 			}
 			else 
 			{
 				String changeMethodKey = "";
-				if(rootName.length > 1)
+				if (rootName.length > 1)
 					changeMethodKey = rootName[rootName.length - 2] + "|||||" + rootName[rootName.length - 1];
 				else 
 					changeMethodKey = rootName[rootName.length - 1];
 				
+				if (change.getChangedEntity().getType().isComment())
+					continue;
 				// Insert
 				if (changeOperation[0].equals("Insert"))
 				{
@@ -286,7 +270,6 @@ public class RevisionComparator {
 					}
 					else {				
 						methodElem = outputDoc.createElement("modify");
-						// methodElem.setAttribute("level", "Class");
 						methodElem.setAttribute("type", "Method");
 						methodElem.setAttribute("name", change.getRootEntity().getUniqueName());
 						Evolution.appendChild(methodElem);
@@ -320,7 +303,6 @@ public class RevisionComparator {
 						System.out.println(change);
 						methodElem = outputDoc.createElement("Delete");
 						methodElem.setAttribute("content", change.getChangedEntity().getUniqueName());
-						methodElem.setAttribute("level", "Class");
 						methodElem.setAttribute("type", "Field");
 						Evolution.appendChild(methodElem);
 					    lineDeleted ++;
@@ -332,14 +314,12 @@ public class RevisionComparator {
 					}
 					else {	
 						methodElem = outputDoc.createElement("modify");
-						methodElem.setAttribute("level", "Class");
 						methodElem.setAttribute("type", "Method");
 						methodElem.setAttribute("name", change.getRootEntity().getUniqueName());
 						Evolution.appendChild(methodElem);
 						updateMethodMap.put(changeMethodKey, methodElem);
 					}
 					Element deleteNode = outputDoc.createElement("Delete");
-					deleteNode.setAttribute("level", "Method");
 					deleteNode.setAttribute("type", change.getChangedEntity().getType().toString());
 					deleteNode.setAttribute("content", change.getChangedEntity().getUniqueName());
 					deleteNode.setAttribute("parent", change.getRootEntity().getUniqueName());
@@ -362,10 +342,8 @@ public class RevisionComparator {
 					Element methodElem;
 					if (change.getChangedEntity().getType().isField())
 					{
-						System.out.println(change);
 						methodElem = outputDoc.createElement("Update");
 						methodElem.setAttribute("content", change.getChangedEntity().getUniqueName());
-						methodElem.setAttribute("level", "Class");
 						methodElem.setAttribute("type", "Field");
 						Evolution.appendChild(methodElem);
 						lineUpdated ++;
@@ -376,14 +354,12 @@ public class RevisionComparator {
 					else 
 					{
 						methodElem = outputDoc.createElement("modify");
-						methodElem.setAttribute("level", "Class");
 						methodElem.setAttribute("type", "Method");
 						methodElem.setAttribute("name", change.getRootEntity().getUniqueName());
 						Evolution.appendChild(methodElem);
 						updateMethodMap.put(changeMethodKey, methodElem);
 					}
 					Element updateNode = outputDoc.createElement("Update");
-					updateNode.setAttribute("level", "Method");
 					updateNode.setAttribute("type", change.getChangedEntity().getType().toString());
 					updateNode.setAttribute("content", change.getChangedEntity().getUniqueName());
 					updateNode.setAttribute("parent", change.getRootEntity().getUniqueName());
@@ -409,7 +385,6 @@ public class RevisionComparator {
 						System.out.println(change);
 						methodElem = outputDoc.createElement("Move");
 						methodElem.setAttribute("content", change.getChangedEntity().getUniqueName());
-						methodElem.setAttribute("level", "Class");
 						methodElem.setAttribute("type", "Field");
 						Evolution.appendChild(methodElem);
 						lineMoved ++;
@@ -420,7 +395,7 @@ public class RevisionComparator {
 					else 
 					{
 						methodElem = outputDoc.createElement("modify");
-						methodElem.setAttribute("level", "Class");
+						//methodElem.setAttribute("level", "Class");
 						methodElem.setAttribute("type", "Method");
 						methodElem.setAttribute("name", change.getRootEntity().getUniqueName());
 						Evolution.appendChild(methodElem);
@@ -428,7 +403,6 @@ public class RevisionComparator {
 					}
 					Element moveNode = outputDoc.createElement("Move");
 					moveNode.setAttribute("type", change.getChangedEntity().getType().toString());
-					moveNode.setAttribute("level", "Method");
 					moveNode.setAttribute("content", change.getChangedEntity().getUniqueName());
 					moveNode.setAttribute("parent", change.getRootEntity().getUniqueName());
 					methodElem.appendChild(moveNode);
@@ -471,16 +445,39 @@ public class RevisionComparator {
 		Evolution.appendChild(codeChurn);
 	}
 	
+	private int methodLine (String src)
+	{
+		int countOfBracket = 0;
+		int lineNumber = 0;
+		for (int i = 0; i < src.length(); i ++)
+		{
+			char c = src.charAt(i);
+			if (c == '\n')
+				lineNumber ++;
+			if (c == '{')
+				countOfBracket ++;
+			if (c == '}')
+			{
+				countOfBracket --;
+				if (countOfBracket  == 0)
+					return lineNumber;
+			}
+		}
+		if ( lineNumber <= 0)
+			return -1;
+		return lineNumber;
+	}
+	
 	private int keyLocation (String regex, String input)
 	{
-		Pattern p = Pattern.compile(regex);
+		Pattern p = Pattern.compile(regex, Pattern.DOTALL);
 		Matcher m = p.matcher(input);
 		if (m.find())
 		{
 			return (m.start());
 		}
 		else{
-			System.out.println(regex);
+			//System.out.println(regex);
 			//System.out.println(input);
 			return -1;
 		}
@@ -488,7 +485,7 @@ public class RevisionComparator {
 	
 	private String getRegex (Element methodNode)
 	{
-		String searchMethodKeyword = methodNode.getAttribute("name") + "(\\s*+)" + "\\(" + "(\\s*+)";
+		String searchMethodKeyword = methodNode.getAttribute("name") + "(\\s*?)" + "\\(";
 		NodeList paraList = methodNode.getElementsByTagName("parameter");
 		String paraStr = "";
 		// 组成 method 的关键字 （应当组成正则表达式）
@@ -496,10 +493,17 @@ public class RevisionComparator {
 		{
 			Element paraElem = (Element) paraList.item(i);
 			// type [] issue
+			
 			String typeStr = paraElem.getAttribute("type");
-			
-			String typeRegex = "(final)*?(\\s*?)";		// 这里应该还会有修改
-			
+			String typeRegex;
+			if (i == 0)
+			{
+				typeRegex = "\\s*?";		// 这里应该还会有修改
+			}
+			else
+			{
+				typeRegex = ".*?";
+			}
 			// 若含有特殊字符，则加反斜杠 \
 				for(int j = 0; j < typeStr.length(); j ++)
 				{
@@ -509,24 +513,58 @@ public class RevisionComparator {
 					}
 					else 
 					{
-						typeRegex = typeRegex.concat("(\\s*?)");
-						typeRegex = typeRegex.concat("\\" + typeStr.charAt(j) );
+						if (typeStr.charAt(j) == ' ')
+							typeRegex = typeRegex.concat("(\\s*?)");
+						else{
+							typeRegex = typeRegex.concat("(\\s*?)");
+							typeRegex = typeRegex.concat("\\" + typeStr.charAt(j) );
+						}
 					}
 				}
 			
-		
+			//typeRegex = typeRegex.concat(".*?");
+			searchMethodKeyword = searchMethodKeyword.concat(typeRegex);
 			//
-			paraStr = paraStr.concat(typeRegex + "(\\s*?)" + paraElem.getAttribute("name"));
+			/*
+			paraStr = paraStr.concat(typeRegex + "(\\s*?)" + paraElem.getAttribute("name"));	
 			if(i != paraList.getLength() - 1)
 				paraStr = paraStr.concat("(\\,)(\\s*?)");
+			*/
 		}
-		searchMethodKeyword = searchMethodKeyword.concat(paraStr) + "(\\s*?)\\)";
-		
+		searchMethodKeyword = searchMethodKeyword.concat(paraStr) + ".*?\\)";
+		System.out.printf("regex is %s\n", searchMethodKeyword);
 		return searchMethodKeyword;
 	}
 	
 	private void cdAddCompare()
 	{
+		// import
+		for (Map.Entry<String, Integer> m : preImportMap.entrySet())
+		{
+			String key = m.getKey();
+			// delete
+			if (!curImportMap.containsKey(key))
+			{
+				Element nElem = outputDoc.createElement("Insert");
+				nElem.setAttribute("content", key);
+				nElem.setAttribute("type", "import");
+				Evolution.appendChild(nElem);
+				lineAdded ++;
+			}
+		}
+		for (Map.Entry<String, Integer> m : curImportMap.entrySet())
+		{
+			String key = m.getKey();
+			// delete
+			if (!preImportMap.containsKey(key))
+			{
+				Element nElem = outputDoc.createElement("Delete");
+				nElem.setAttribute("content", key);
+				nElem.setAttribute("type", "import");
+				Evolution.appendChild(nElem);
+				lineDeleted ++;
+			}
+		}
 		// comment
 		for (Map.Entry<String, ArrayList<String>> m : preCommentMap.entrySet())
 		{
@@ -580,6 +618,7 @@ public class RevisionComparator {
 							{
 								updateMethodElem = outputDoc.createElement("modify");
 								updateMethodElem.setAttribute("type", "Method");
+								updateMethodElem.setAttribute("name",genre[1]);
 								Evolution.appendChild(updateMethodElem);
 								updateMethodMap.put(key, updateMethodElem);
 							}
@@ -621,6 +660,7 @@ public class RevisionComparator {
 							{
 								updateMethodElem = outputDoc.createElement("modify");
 								updateMethodElem.setAttribute("type", "Method");
+								updateMethodElem.setAttribute("name",genre[1]);
 								Evolution.appendChild(updateMethodElem);
 								updateMethodMap.put(key, updateMethodElem);
 							}
@@ -663,6 +703,7 @@ public class RevisionComparator {
 						{
 							updateMethodElem = outputDoc.createElement("modify");
 							updateMethodElem.setAttribute("type", "Method");
+							updateMethodElem.setAttribute("name",genre[1]);
 							Evolution.appendChild(updateMethodElem);
 							updateMethodMap.put(key, updateMethodElem);
 						}
@@ -685,6 +726,17 @@ public class RevisionComparator {
 		}
 	}
 
+	private void loadImport(Element elem, HashMap<String, Integer> map) throws Exception
+	{
+		NodeList importList = elem.getElementsByTagName("import");
+		for (int i = 0; i < importList.getLength(); i ++)
+		{
+			Element nElem = (Element) importList.item(i);
+			String content = nElem.getAttribute("name");
+			map.put(content, 1);
+		}
+	}
+	
 	private void loadComment(Document doc, HashMap<String, ArrayList<String>> map) throws Exception 
 	{
 		NodeList commentList =  doc.getElementsByTagName("comment");
@@ -700,11 +752,11 @@ public class RevisionComparator {
 			{
 				key = getMethodString(pElem);
 			}
-			if (pElem.getNodeName().equals("Class"))
+			else if (pElem.getNodeName().equals("Class"))
 			{
 				key = "Class" + "|||||" + pElem.getAttribute("name");
 			}
-			if (pElem.getNodeName().equals("File"))
+			else if (pElem.getNodeName().equals("File"))
 			{
 				key = "File" + "|||||" + "File";
 			}
@@ -719,10 +771,7 @@ public class RevisionComparator {
 				arr.add(nElem.getTextContent());
 				map.put(key, arr);
 			}		
-			
-		}
-		
-
+		}	
 	}
 	
 	private void loadMethod() throws Exception 

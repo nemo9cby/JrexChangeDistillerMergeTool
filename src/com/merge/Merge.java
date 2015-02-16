@@ -124,10 +124,15 @@ public class Merge {
 				System.out.println("Evorex parse fail!!!");
 				return;
 			}
+			// get the file path
+			NodeList nl = doc.getElementsByTagName("File");
+			Element e = (Element)nl.item(0);
+			String fpath = e.getAttribute("path");
 			
 			Document outputDoc = dbBuilder.newDocument();
 			Element outputFileElem = outputDoc.createElement("File");
 			outputFileElem.setAttribute("name", node.getName());
+			outputFileElem.setAttribute("path", fpath);
 			// outputFileElem.setAttribute("path", filePath);
 			outputDoc.appendChild(outputFileElem);
 			
@@ -154,6 +159,7 @@ public class Merge {
 				Element left = (Element) revisionList.item(i);
 				Element right = (Element) revisionList.item(i + 1);
 				RevisionComparator r = new RevisionComparator(left, right, node.getAbsolutePath(),node.getName().substring(0, node.getName().lastIndexOf(".")));
+				
 				outputDoc = r.compare(outputDoc, outputFileElem);
 			}
 			
