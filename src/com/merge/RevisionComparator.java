@@ -166,7 +166,7 @@ public class RevisionComparator {
 					String keyOfInsertMethod = rootName[rootName.length - 1] + "|||||" + changeMethod[changeMethod.length - 1];
 					if (curMethodMap.get(keyOfInsertMethod) == null)
 					{
-						System.out.printf("Compare between %s and %s, the insert method: %s is not found in jrex. \n"
+						System.out.printf(" Insert Error! Compare between %s and %s, the insert method: %s is not found in jrex. \n"
 								,preFileName, curFileName, keyOfInsertMethod);
 						break;
 					}
@@ -206,7 +206,7 @@ public class RevisionComparator {
 					String keyOfDeleteMethod = rootName[rootName.length - 1] + "|||||" + changeMethod[changeMethod.length - 1];
 					if (preMethodMap.get(keyOfDeleteMethod) == null)
 					{
-						System.out.printf("Compare between %s and %s, the delete method: %s is not found in jrex. \n"
+						System.out.printf("Delete ERROR! Compare between %s and %s, the delete method: %s is not found in jrex. \n"
 								,preFileName, curFileName, keyOfDeleteMethod);
 						break;
 					}
@@ -472,20 +472,21 @@ public class RevisionComparator {
 	{
 		Pattern p = Pattern.compile(regex, Pattern.DOTALL);
 		Matcher m = p.matcher(input);
+		int result = -1;
 		if (m.find())
 		{
-			return (m.start());
+			result = m.start();
+			//int end = m.end();
+			//System.out.println(regex + " : " + input.substring(result, end) + "||||||||||");
 		}
-		else{
 			//System.out.println(regex);
 			//System.out.println(input);
-			return -1;
-		}
+		return result; 
 	}
 	
 	private String getRegex (Element methodNode)
 	{
-		String searchMethodKeyword = methodNode.getAttribute("name") + "(\\s*?)" + "\\(";
+		String searchMethodKeyword = methodNode.getAttribute("name") + "(\\n|\\s)*" + "\\(";
 		NodeList paraList = methodNode.getElementsByTagName("parameter");
 		String paraStr = "";
 		// 组成 method 的关键字 （应当组成正则表达式）
@@ -496,14 +497,15 @@ public class RevisionComparator {
 			
 			String typeStr = paraElem.getAttribute("type");
 			String typeRegex;
+			/*
 			if (i == 0)
 			{
-				typeRegex = "\\s*?";		// 这里应该还会有修改
+				typeRegex = "[.*?^\\(]";		// 这里应该还会有修改
 			}
 			else
-			{
-				typeRegex = ".*?";
-			}
+			*/
+				typeRegex = "([^;])*?";
+			
 			// 若含有特殊字符，则加反斜杠 \
 				for(int j = 0; j < typeStr.length(); j ++)
 				{
@@ -531,7 +533,9 @@ public class RevisionComparator {
 				paraStr = paraStr.concat("(\\,)(\\s*?)");
 			*/
 		}
-		searchMethodKeyword = searchMethodKeyword.concat(paraStr) + ".*?\\)";
+		//searchMethodKeyword = searchMethodKeyword.concat(paraStr) + ".*?\\)\\s*[^;]";
+		searchMethodKeyword = searchMethodKeyword.concat(paraStr) + "([^;])*?\\)\\s*[^;]";
+		
 		System.out.printf("regex is %s\n", searchMethodKeyword);
 		return searchMethodKeyword;
 	}
